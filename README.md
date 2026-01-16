@@ -41,11 +41,144 @@ This repository implements a production-ready event-driven serverless workflow o
 
 ---
 
+## AWS Account & User Setup (for this project)
+
+This project deploys AWS infrastructure using AWS CDK (which synthesizes and deploys CloudFormation stacks). You should **not** deploy using the AWS root user.
+
+Recommended setup (best practice):
+
+- Secure the root user (MFA, recovery info)
+- Create a normal human user in **IAM Identity Center (SSO)**
+- Assign that user permissions to deploy the CDK stack
+- Use SSO login from the AWS CLI (no long-lived access keys)
+
+### 1) Create an AWS account
+
+1. Go to https://aws.amazon.com/ and choose **Create an AWS Account**.
+2. Use an email address you control and a strong password.
+3. Complete billing and phone verification.
+4. Choose the region you will deploy to consistently (examples: `us-east-1`, `us-west-2`).
+
+Tip: For a class/team project, pick **one region** and stick to it to avoid confusion.
+
+### 2) Secure the root user (do this immediately)
+
+1. AWS Console → **Sign in** → choose **Root user**.
+2. Enable **MFA** for the root user:
+  - Console → your account name (top right) → **Security credentials** → **Multi-factor authentication (MFA)**.
+3. (Recommended) Ensure account recovery info is correct:
+  - Billing → **Account** → confirm contact details.
+4. (Recommended) Enable billing visibility for non-root users:
+  - Billing → **Account** → “IAM user and role access to Billing information” → **Activate**.
+5. (Recommended) Add a Budget to prevent surprises:
+  - Billing → **Budgets** → Create budget (monthly) + email alerts.
+
+### 3) Create and assign a user (recommended: IAM Identity Center / SSO)
+
+IAM Identity Center (formerly “AWS SSO”) is the easiest way to give a user console + CLI access **without** creating access keys.
+
+1. AWS Console → search **IAM Identity Center**.
+2. Choose **Enable**.
+3. In IAM Identity Center, confirm these basics:
+  - **Settings** → note the **AWS access portal URL** (you will sign in here)
+  - **Multi-factor authentication** → set a policy if you want MFA for users
+4. Create the user:
+  - **Users** → **Add user** → fill name + email → finish
+5. (Optional but recommended) Create a group:
+  - **Groups** → **Create group** (e.g., `cdk-deployers`) → add your user to it
+6. Assign the user/group to the AWS account:
+  - **AWS accounts** → select your account → **Assign users or groups**
+7. Create/choose a permission set and attach it to the assignment:
+  - Simple / fastest (recommended for a course project): **AdministratorAccess**
+  - More restricted (advanced): ensure it can run CDK bootstrap + deploy. At minimum it must allow:
+    - CloudFormation (create/update stacks)
+    - IAM (create roles/policies used by CDK and CloudFormation, and `iam:PassRole`)
+    - Service APIs used by this project: API Gateway, Lambda, EventBridge, SQS, DynamoDB, CloudWatch Logs/Alarms/Dashboard
+
+After assignment, the user can sign in via the **AWS access portal URL**, choose the account + role, and open the AWS Console.
+
+### 4) Configure AWS CLI for Identity Center (SSO)
+
+1. Install AWS CLI v2.
+2. Configure SSO (creates a named profile):
+
+```bash
+aws configure sso
+```
+
+3. Follow the prompts:
+  - **SSO start URL**: the AWS access portal URL from Identity Center
+  - **SSO region**: the region where Identity Center is enabled
+  - Select your **account** and **permission set**
+  - Choose a profile name (example: `myapp-dev`)
+4. Log in (this opens a browser to authenticate):
+
+```bash
+aws sso login --profile <your-profile>
+```
+
+5. Verify your identity:
+
+```bash
+aws sts get-caller-identity --profile <your-profile>
+```
+
+Windows tip (so CDK/npm scripts automatically use the profile):
+
+- PowerShell:
+
+```powershell
+$env:AWS_PROFILE="<your-profile>"
+```
+
+- Command Prompt (cmd.exe):
+
+```bat
+set AWS_PROFILE=<your-profile>
+```
+
+### 5) Bootstrap CDK (once per account/region)
+
+CDK bootstrap creates a staging bucket and roles used by CDK/CloudFormation.
+
+```bash
+cdk bootstrap --profile <your-profile>
+```
+
+If you use multiple regions, run bootstrap once per region. You can also be explicit:
+
+```bash
+aws sts get-caller-identity --profile <your-profile>
+cdk bootstrap aws://<account-id>/<region> --profile <your-profile>
+```
+
+---
+
+### Alternative: IAM user with access keys (not recommended)
+
+If Identity Center isn’t available, you can use an IAM user, but avoid long-lived keys when possible.
+
+Use this only if you cannot use Identity Center.
+
+1. AWS Console → **IAM** → **Users** → **Create user**.
+2. Choose how the user will access AWS:
+  - **Console access** (for the AWS Console)
+  - **Access key** (for AWS CLI/CDK)
+3. Attach permissions:
+  - Quick setup: **AdministratorAccess**
+  - Restricted setup: ensure CDK bootstrap + deploy permissions (CloudFormation + IAM role creation/pass-role + the services in this stack)
+4. Configure credentials on your machine:
+
+```bash
+aws configure
+aws sts get-caller-identity
+```
+
 ## Prerequisites
 
 - Node.js **18 or 20** (recommended: 20.x)
 - npm (comes with Node.js)
-- AWS CLI v2 installed and configured (`aws configure`)
+- AWS CLI v2 installed and authenticated (see **AWS Account & User Setup** above)
 - AWS CDK v2 CLI installed globally:
 
 ```bash
@@ -124,6 +257,32 @@ npm test
 ## Deploy
 
 From the repository root:
+
+If you configured an AWS CLI profile (recommended, especially with SSO), log in and set it for your shell:
+
+```bash
+aws sso login --profile <your-profile>
+```
+
+Then set the profile for your current terminal:
+
+- PowerShell:
+
+```powershell
+$env:AWS_PROFILE="<your-profile>"
+```
+
+- Command Prompt (cmd.exe):
+
+```bat
+set AWS_PROFILE=<your-profile>
+```
+
+- bash (Git Bash / WSL):
+
+```bash
+export AWS_PROFILE=<your-profile>
+```
 
 ```bash
 # Synthesize CloudFormation templates
