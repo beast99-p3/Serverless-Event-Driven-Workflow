@@ -1,4 +1,4 @@
-# Event-Driven Orders Workflow (AWS CDK v2 + TypeScript)
+# Serverless Orders Workflow (EventBridge · SQS · Lambda · DynamoDB)
 
 This repository implements a production-ready event-driven serverless workflow on AWS using AWS CDK v2 (TypeScript) and Node.js 20.
 
